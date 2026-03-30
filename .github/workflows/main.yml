@@ -1,0 +1,18 @@
+name: HF Human-Like Awake Bot
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stealth Human Ping
+        run: |
+          if [ $((RANDOM % 10)) -lt 3 ]; then
+            exit 0
+          fi
+          sleep $((RANDOM % 900))
+          curl -m 15 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" -sL https://gulashnkhatunstudent-system.hf.space > /dev/null
